@@ -11,18 +11,18 @@ Welcome to the Time Series Analysis repository! This repository contains dataset
 
 This repository does not require any installation. However, you may need to install specific libraries or packages if you intend to run the provided code examples or tutorials in your local environment.
 
-## Tutorials
+## Tutorials 📚
 
 Explore my walkthrough tutorial to learn about time series analysis techniques and methodologies with stock price data:
 
 - [CocaCola Stock Price Time Series Analysis Walkthrough](tutorials/getting_started.md)
 
 
-## Code Examples
+## Code Examples 👽
 
 Browse through my code example fils to see how to implement time series analysis techniques in R.
 
-## Datasets
+## Datasets 📊
 
 Download sample datasets to practice time series analysis techniques:
 
