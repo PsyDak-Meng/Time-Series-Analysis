@@ -1,0 +1,445 @@
+---
+title: "ISYE 6402 Homework 3"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include = FALSE}
+
+# Set up the default parameters
+# 1. The code block will be shown in the document
+# 2. set up figure display size
+# 3. turn off all the warnings and messages
+
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width = 8, fig.height = 4)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+# Background
+
+For this data analysis, you will analyze the daily closing price of The Coca-Cola Company (KO) at NYSE since 2015. The data can be read from *CocaColaStock.csv*. Here we use and compare different ways of fitting the ARIMA model with GARCH. Please note that in this data analysis you will perform lots of order selection and hence it may take several minutes for the file to knit.
+
+
+```{r library}
+library(lubridate)
+library(mgcv)
+library(tseries)
+library(car)
+library(rugarch)
+library(xts)
+library(TSA)
+```
+
+# Instructions on reading the data
+
+To read the data in `R`, save the file in your working directory (make sure you have changed the directory if different from the R working directory) and read the data using the `R` function `read.csv()`
+
+```{r}
+stock <- read.csv("CocaColaStock.csv", header = TRUE)
+stock$Date <- as.POSIXct(stock$Date)
+```
+
+# Question 1. Explanatory Data Analysis (7 points)
+
+Transform the original closing price by taking the logarithm. Fit a non-parametric trend using splines together with ANOVA day-of-the-week seasonality. Plot the log-transformed time series together with the fitted values from modeling the trend and seasonality, and display the model summary. Are the trend and seasonality statistically significant?
+```{r}
+stock.log <- stock
+stock.log$KO.Close = log(stock$KO.Close)
+
+time.pts <- ts(seq(1:length(stock$Date)))
+time.pts <- (time.pts - min(time.pts)) / max(time.pts)
+
+day.start = c(2015,day(stock.log$Date[1]))
+day = as.integer(wday(stock.log$Date))
+day <- ts(day, freq = 7, start = day.start)
+
+stock.log.gam.fit = gam(stock.log$KO.Close~s(time.pts)+season(day)-1)
+summary(stock.log.gam.fit)
+fitted.stock.log.gam = ts(fitted(stock.log.gam.fit), freq = 365.25, start = day.start)
+
+plot(x=stock.log$Date,y=stock.log$KO.Close,type='l',col='black',ylab='log stock KO',xlab='Date')
+lines(x=stock.log$Date,y=fitted.stock.log.gam,col='blue',type='l')
+
+```
+
+*Response*: \
+Both the trend and seasonality statistically significant.
+
+# Question 2. Fitting ARIMA then GARCH. (40 points)
+
+**2a. (ARIMA fitting and order selection)** Fit an ARIMA$(p,1,q)$ model with both $p$ and $q$ up to 8. For simplicity, select the best model based on AIC instead of AICc, and display the model summary. What is the selected order? What can you infer about the statistical significance of the ARIMA coefficients? (10 points)
+
+```{r}
+arima.aic = Inf
+arima.order=c(0,0,0)
+p = c(1:9)-1
+q = c(1:9)-1
+
+for(i in 1:9){
+  for(j in 1:9){
+    current.aic=AIC(arima(stock.log$KO.Close, order = c(p[i],1,q[j]),method='ML'))
+    if(current.aic<arima.aic){ 
+      arima.aic=current.aic
+      arima.order=c(p[i],1,q[j])
+      stock.arima=arima(stock.log$KO.Close, order = arima.order,method='ML')
+    }
+  }
+}
+
+```
+
+```{r}
+print(arima.order)
+summary(stock.arima)
+#final.arima
+arima.pvals <- (1-pnorm(abs(stock.arima$coef)/sqrt(diag(stock.arima$var.coef))))*2
+print(arima.pvals)
+
+```
+
+
+*Response:* \
+The selected order is (p,d,q)=[7,1,3], all coefficients are significant except from ar7, might be better to reduce order to [6,1,3].
+
+**2b. (ARIMA residual analysis)** Plot the residual process of the model selected in 2a. Plot the ACF of the residual and the squared residual process. Is the residual process uncorrelated and/or independent from the ACF plots? Is there heteroskedasticity in the time series? (8 points)
+
+```{r}
+arima.residual = resid(stock.arima)
+plot(x=stock.log$Date,y=arima.residual,xlab='Date',type='l',main='Residual of ARIMA(7,1,3)')
+par(mfrow = c(1, 2))
+acf(arima.residual,main='ARIMA(7,1,3) Residual ACF',max.lag=365)
+Box.test(arima.residual,lag=(365),type='Ljung-Box',fitdf=(7+3+1))
+acf(arima.residual**2,main='ARIMA(7,1,3) Residual^2 ACF',max.lag=365)
+
+```
+
+*Response:*  \
+The residual process looks stationary and did not reject null hypothesis for Ljung Box test, this indicats that the residual process is uncorrelated but not necessarily independant.\
+The squared residual process shows a clear trend, this indicates that there is heteroskedaticity  in the time series.
+
+
+**2c. (GARCH fitting and order selection)** Use *tseries::garch()* to fit a GARCH$(p,q)$ model using the residual process of the model in 2a, for $p,q$ up to 5. Select the best model based on AIC and display the model summary. Comment on the statistical significance. Write down the equation for the fitted GARCH model. (8 points)
+
+```{r}
+garch.aic = Inf
+garch.order=c(0,0)
+p = c(1:6)-1
+q = c(1:6)-1
+
+for(i in 1:6){
+  for(j in 1:6){
+    if (p[i]!=0 &q[j]!=0){
+    current.aic=AIC(tseries::garch(arima.residual, order = c(p[i],q[j])))
+    if(current.aic<garch.aic){ 
+
+      garch.aic=current.aic
+      garch.order=c(p[i],q[j])
+      stock.garch=tseries::garch(arima.residual, order = garch.order, control =garch.control(trace = TRUE, start = NULL, grad = c("analytical","numerical")))
+      
+     }
+    }
+  }
+}
+
+```
+```{r}
+print(garch.order)
+summary(stock.garch)
+garch.pvals <- (1-pt(abs(stock.garch$coef)/sqrt(diag(stock.garch$vcov)),df=2))*2
+garch.pvals <- (1-pnorm(abs(stock.garch$coef)/sqrt(diag(stock.garch$vcov))))*2
+print(garch.pvals)
+
+```
+
+*Response:* \
+All parameters are statistical significant. the equation of the selected GARCH(1,1) is $\sigma^2=\gamma_0+\gamma_1 Z_{t-1}^2+\gamma_1 \sigma+t^2$.
+
+
+**2d. (GARCH residual analysis)** Display the ACF of the residuals and squared residuals of the GARCH model in 2c, as well as the QQ plot of the residuals. Comment on whether the GARCH model assumptions are satisfied. (8 points)
+
+
+```{r}
+garch.residual = resid(stock.garch)[6:length(resid(stock.garch))]
+acf(garch.residual,main='ACF of GARCH Residual', max.lag=365)
+acf(garch.residual**2,main='ACF of GARCH Residual^2', max.lag=365)
+qqnorm(garch.residual,distribution = function(p) qt(p, df = 2))
+qqline(garch.residual)
+
+```
+
+*Response:* \
+The ACF plots show good stationarity and the QQ plot shows good compliance to the t distribution, so the model follows GARCH assumptions.
+
+
+**2e. (GARCH fitting with other conditional distributions)** This time use *rugarch::ugarchfit()* to fit a GARCH model using the residual process of the ARIMA model fitted in 2a with the same GARCH order selected in 2c, and use t-distribution as the conditional distribution. Compare the fitted coefficients of this model with 2c. Display the QQ plot of model residuals against the fitted t-distribution and see if they satisfy the model assumption. (8 points)
+
+(Hint: (1) Set the *armaOrder* to 0 and *include.mean* to *FALSE* in *ugarchspec* to fit only the GARCH model. (2) The residuals of the fitted *uGARCHfit* model can be accessed at *myGarchFit@fit$z*. Using *residuals()* on a *uGARCHfit* model returns the input time series for this question. (3) The degree of freedom of the fitted t-distribution is given by `shape' in the *uGARCHfit* model coefficients.)
+
+
+```{r}
+spec.2e=ugarchspec(variance.model=list(garchOrder=c(1,1)), mean.model=list(armaOrder=c(0,0),include.mean=FALSE), distribution.model ='std') 
+stock.garch.t = rugarch::ugarchfit(spec.2e,arima.residual)
+
+print(stock.garch$coef)
+print(stock.garch.t)
+
+qqnorm(stock.garch.t@fit$z,distribution = function(p) qt(p, df = 4.807))
+qqline(stock.garch.t@fit$z)
+
+```
+
+*Response:* \
+All coefficients are significant except for omega, the coefficients are close to those of 2c excpet for alpha1.\
+The qq plot shows good compliance to t distribution, so the model follows GARCH assumptions.
+
+
+# Question 3: Fitting ARMA together with GARCH (30 points)
+For this question we consider the daily return of Cola-Cola stock in percentage to get rid of the trend, and split the data into training and testing set by leaving the last 10 days out for testing.
+```{r}
+dailyReturn <- diff(stock$KO.Close)/stock$KO.Close[-length(stock$KO.Close)]*100
+dailyReturn <- xts(dailyReturn, order.by = stock$Date[-1])
+training <- dailyReturn[1:(length(dailyReturn)-10)]
+testing <- dailyReturn[(length(dailyReturn)-9):length(dailyReturn)]
+par(mfrow=c(1,1))
+plot(training, xlab = "Date", ylab = "Daily Return (%)", main = "Training Data: Daily Return")
+```
+
+**3a. (ARIMA-GARCH fitting and order selection)** Use *rugarch::ugarchfit* to fit a ARMA$(p,q)$-GARCH$(m,n)$ model for the daily return data for $p,q$ up to 8 and $m,n$ up to 3. Use student's t-distribution as the conditional distribution model. Apply the iterative method to find the best model using AIC. Display the selected model. Does the selected model has the same order with Question 2? (10 points)
+
+```{r}
+p = c(1:9)-1
+q = c(1:9)-1
+m = c(1:4)-1
+n = c(1:4)-1
+arima.order = c(0,0,0)
+arima.aic=Inf
+garch.order = c(0,0)
+arimagarch.aic = Inf
+
+# Fit initial ARMA order
+for(i in 1:9){
+  for(j in 1:9){
+    current.aic=AIC(arima(training, order = c(p[i],0,q[j]),method='ML'))
+    if(current.aic<arima.aic){ 
+      arima.aic=current.aic
+      arima.order=c(p[i],0,q[j])
+    }
+  }
+}
+print(arima.order)
+
+```
+
+```{r}
+# Fix ARMA order, Fit GARCH order
+ for (k in 1:4){
+      for (l in 1:4){
+        if  (m[k]!=0&n[l]!=0){
+          spec.3a=ugarchspec(variance.model=list(garchOrder=c(m[k],n[l])), mean.model=list(armaOrder=arima.order,include.mean=FALSE), distribution.model ='std') 
+         arimagarch = rugarch::ugarchfit(spec.3a,training)
+         current.aic=infocriteria(arimagarch)[1]
+          if(current.aic<arimagarch.aic){ 
+            arimagarch.aic=current.aic
+            garch.order=c(m[k],n[l])
+          }
+        }
+      }
+ }
+
+spec.3a=ugarchspec(variance.model=list(garchOrder=garch.order), mean.model=list(armaOrder=arima.order,include.mean=FALSE), distribution.model ='std') 
+arimagarch = rugarch::ugarchfit(spec.3a,training)
+
+print(garch.order)
+```
+
+
+```{r}
+# Refit ARMA order with GARCH order
+arimagarch.aic = Inf
+
+for(i in 1:9){
+  for(j in 1:9){
+    if (p[i]!=0&q[j]!=0){
+          spec.3a=ugarchspec(variance.model=list(garchOrder=garch.order, mean.model=list(armaOrder=c(p[i],0,q[j]),include.mean=FALSE), distribution.model ='std'))
+          arimagarch = rugarch::ugarchfit(spec.3a,training)
+         current.aic=infocriteria(arimagarch)[1]
+          if(current.aic<arimagarch.aic){ 
+            arimagarch.aic=current.aic
+            arima.order=c(p[i],0,q[j])
+          }
+    }
+  }
+}
+
+spec.3a=ugarchspec(variance.model=list(garchOrder=garch.order, mean.model=list(armaOrder=arima.order,include.mean=FALSE), distribution.model ='std'))
+arimagarch = rugarch::ugarchfit(spec.3a,training)
+print(arima.order)
+
+```
+
+```{r}
+# Refit GARCH order
+garch.order = c(0,0)
+arimagarch.aic = Inf
+
+for (k in 1:4){
+      for (l in 1:4){
+        if  (m[k]!=0&n[l]!=0){
+          spec.3a=ugarchspec(variance.model=list(garchOrder=c(m[k],n[l])), mean.model=list(armaOrder=arima.order,include.mean=FALSE), distribution.model ='std') 
+         arimagarch = rugarch::ugarchfit(spec.3a,training)
+         current.aic=infocriteria(arimagarch)[1]
+          if(current.aic<arimagarch.aic){ 
+            arimagarch.aic=current.aic
+            garch.order=c(m[k],n[l])
+          }
+        }
+      }
+}
+```
+
+```{r}
+spec.3a=ugarchspec(variance.model=list(garchOrder=garch.order), mean.model=list(armaOrder=c(arima.order[1],arima.order[3]),include.mean=FALSE), distribution.model ='std')
+arimagarch = rugarch::ugarchfit(spec.3a,training)
+
+arimagarch
+
+```
+
+*Response:* \
+The iteratively selected model has order ARMA(1,0,1)-GARCH(1,1), it is the same GARCH order BUT DIFFERENT ARMA order as in problem 2.
+
+**3b. (Residual analysis)** Plot the residual process $(\hat Z_t)$ and the standardized residual process $(\hat Z_t / \hat\sigma_t)$. Display the ACF of both the un-standardized and standardized residuals, and the ACFs of the squared residual processes (four ACF plots in total). Comment on your observations based on these plots. (10 points)
+
+(Hint: Same with 2e, *residuals()* on a *uGARCHfit* model returns the un-standardized residuals of the ARMA model (the $\hat Z_t$). The standardized residuals $\hat Z_t / \hat\sigma_t$ can be accessed using *myGarchFit@fit$z*, where $\hat\sigma_t^2$ is the estimated conditional variance by GARCH.)
+
+```{r}
+arimagarch.residual = residuals(arimagarch)
+arimagarch.stdresidual = arimagarch@fit$z 
+plot(arimagarch.residual)
+plot(arimagarch.stdresidual,type='l')
+
+par(mfrow = c(2, 2))
+acf(arimagarch.residual)
+acf(arimagarch.stdresidual)
+acf(arimagarch.residual**2)
+acf(arimagarch.stdresidual**2)
+
+
+```
+
+*Response:* \
+The residual process of residual has zero mean, but has spikes and volatility clusters, this is supported by the ACF plots where though there is stationary ACF for residual, the residual square is non-stationary. This indicates that there is still heteroskedasticity left and uncaptured conditional variance.\
+The residual process or standardized residual has zero mean, finite variance and little sign of volatility clusters, this is supported by the ACF plots where there is stationary ACF and stationary squared residual. This indicated that there is no heteroskedasticity left and the model captured conditional cariance well.
+
+**3c. (Forecasting)** Apply the selected model in 3a and forecast the return of the remaining 10 days. For each iteration, predict one step ahead, then retrain the model by adding the newly observed daily return to predict the next. Plot the actual daily return for these 10 days together with the predicted values and the 95% confidence interval using the predicted conditional variance. Comment on your observations. (10 points)
+
+```{r}
+nfore=length(testing)
+fore.series.1=NULL
+fore.sigma.1=NULL
+for (i in 1:nfore){
+  data = training
+    data = c(training,testing[1:i])
+    fore.model.1 = rugarch::ugarchfit(spec.3a,data)
+    fore = ugarchforecast(fore.model.1, n.ahead=1)
+    fore.series.1=c(fore.series.1,fore@forecast$seriesFor)
+    fore.sigma.1=c(fore.sigma.1,fore@forecast$sigmaFor)
+}
+
+ylim = c(min(fore.series.1-1.96*fore.sigma.1),max(fore.series.1+1.96*fore.sigma.1)) 
+plot(x=index(testing),y=testing,col='black',type='l',xlab='Date',ylab='Daily Return',ylim=ylim)
+lines(x=index(testing),y=fore.series.1,col='red')
+lines(x=index(testing),y=fore.series.1+1.96*fore.sigma.1,col='green')
+lines(x=index(testing),y=fore.series.1-1.96*fore.sigma.1,col='green')
+
+```
+
+*Response:* \
+The model captures the conditional mean rather poorly despite having a stationary residual process, the predicted conditional mean is around 0 and does not follow the trend of the data.\
+On the other hand, The model captures conditional variance to a good degree where the predicted conditional variance fluctuates along with the data and captures the observation within 95% CI.
+
+# Question 4. Other GARCH models (8 points)
+
+Fit the training data in Question 3 using *rugarch::ugarchfit()* with two of the other GARCH models (eGARCH, apARCH, iGARCH etc.) of your choice using t-distribution as conditional distribution. You don't need to select the ARMA and GARCH order again, just use the order in Question 3a. Predict the daily return of the remaining 10 days using these two models, and compare the prediction accuracies based on these models and that in Question 3 using Mean Squared Prediction Error (MSPE) and Mean Absolute Prediction Error (MAE). What is the appropriate measure of prediction accuracy to be used in comparing the predictions? Provide the reasoning behind your selection.
+
+```{r}
+spec.3c.T=ugarchspec(variance.model=list(model='fGARCH',submodel='TGARCH',garchOrder=garch.order), mean.model=list(armaOrder=c(arima.order[1],arima.order[3]),include.mean=FALSE), distribution.model ='std')
+
+fore.series.1=NULL
+fore.sigma.1=NULL
+for (i in 1:nfore){
+  data = training
+    data = c(training,testing[1:i])
+    fore.model.1 = rugarch::ugarchfit(spec.3c.T,data)
+    fore = ugarchforecast(fore.model.1, n.ahead=1)
+    fore.series.1=c(fore.series.1,fore@forecast$seriesFor)
+    fore.sigma.1=c(fore.sigma.1,fore@forecast$sigmaFor)
+}
+print(mean((fore.series.1-testing)**2))
+print(mean(abs(fore.series.1-testing)))
+
+```
+
+```{r}
+spec.3c.AP=ugarchspec(variance.model=list(model='fGARCH',submodel='APARCH',garchOrder=garch.order), mean.model=list(armaOrder=c(arima.order[1],arima.order[3]),include.mean=FALSE), distribution.model ='std')
+
+fore.series.1=NULL
+fore.sigma.1=NULL
+for (i in 1:nfore){
+  data = training
+    data = c(training,testing[1:i])
+    fore.model.1 = rugarch::ugarchfit(spec.3c.AP,data)
+    fore = ugarchforecast(fore.model.1, n.ahead=1)
+    fore.series.1=c(fore.series.1,fore@forecast$seriesFor)
+    fore.sigma.1=c(fore.sigma.1,fore@forecast$sigmaFor)
+}
+print(mean((fore.series.1-testing)**2))
+print(mean(abs(fore.series.1-testing)))
+```
+*Response:* \
+The models of choice are TGARCH and APARCH, and APARCH has slightly better performance in this time series\
+The better metric here should be MSPE, because while both metric follows the leverage property, the time series comes with heteroskedasticity and has clusters associated with spikes. Since RSPE amplifies the effct of spikes more, it should be more suitable.
+
+# Question 5. (15 points)
+
+**5a.** Expand on the derivation of the 3-step ahead predictions of an estimated ARMA(1,2)-GARCH(2,1) model using the recursive approach.  (5 points)
+
+*Response:* \
+Recursion for (i = 1:3)\
+\item Estimate conditional mean from ARMA(1,2) $\hat{Y_{T+i}}=P_T Y_{T+i}$\
+\item Derive residual $\hat{Z_{T+1}}$ from estimated $\hat{Y_{T+i}}$\
+$\hat{Z_{T+i}}=\hat{Y_{T+i}}-(\hat{\mu}+\hat{\phi_1}\hat{Y_{T+i-1}}+\hat{\theta_1}\hat{Z_{T+i-1}}+\hat{\theta_q}\hat{Z_{T+i-2}})$\
+\item Derive conditional variance using derived residual\
+$\hat{\sigma_{T+i}^2}=\hat{\gamma_0}+\hat{\gamma_1}\hat{Z_{T+i-1}}+\hat{\gamma_2}\hat{Z_{T+i-2}}+\hat{\beta_1}\hat{\sigma_{T+i-1}}$
+\item Add predicted $\hat{Z_{T+1}}$ and $\hat{\sigma_{T+i}^2}$ into time series and derive $\hat{Z_{t}}$ and $\hat{\sigma_{t}^2}$ at next time point until 3-steps.
+
+
+
+**5b.** Derive the conditions of stationarity for an ARCH(2) model. (5 points)
+
+*Response:* \
+$Y_t=\mu+Z_t$\
+The finite variance condition for stationarity is computed as $E[Y_t^2]=Var[Z_t^2]$
+$Var[Z_t^2]=E(Z_t^2)]-E[Z_t]^2=E[Z_t^2]=E[\sigma^2]=E[\gamma_0+\gamma_1 Z_{t-1}^2+\gamma_2 Z_{t-2}^2]$\
+$E[Z_t^2]=\gamma_0+\gamma_1 E[Z_{t-1}^2]+\gamma_2 E[Z_{t-2}^2]$\
+$E[Z_t^2]=\gamma_0+\gamma_1 E[Z_{t}^2]+\gamma_2 E[Z_{t}^2]$\
+$(1-\gamma_1-\gamma_2)E[Z_t^2]=\gamma_0$\
+$E[Z_t^2]=\frac{\gamma_0}{1-\gamma_1-\gamma_2}$\
+For finite variance, coefficients have to satisfy conditions\
+$\gamma_1+\gamma_2<1$
+
+
+**5c.** Provide an example illustrating why estimating conditional mean and conditional variance jointly is more effective than estimating separately.  (5 points)
+
+*Response:* \
+Assume using ARIMA-GARCH model for estimating conditional mean and variance, and the desired (p,q,m,n) order is up to integer k for ARIMA and l for GARCH.\
+\item Estimating separately requires $k^2*l^2$ times of fitting operations.\
+\item Estimating jointly requires independently fitting ARMA(p,q) first at $k^2$ times, then fix order (p,q) and fit corresponding ARIMA-GARCH to obtain (m,n) order at $l^2$ times, next fix order(m,n) and fit ARIMA-GARCH to obtain GARCH incorporated (p,q) at $k_2$ times, and lastly fit ARIMA-GARCH to obtain (m,n) at $l^2$ times.
+The total operation is at $2(k^2+l^2)$ times.\
+For separate estimation to be more efficient,\
+l and k should satisfy $l^2k^2-2(l^2+k^2)>0$, this holds true $\forall$ l>2 and k>1, making joint estimation more efficient in the majority of cases.
+
+
+
