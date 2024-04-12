@@ -1,0 +1,356 @@
+---
+title: "Final Project"
+output: html_notebook
+---
+
+```{r}
+library(lubridate)
+library(dplyr)
+library(lmtest)
+```
+
+# EDA
+```{r}
+NYPD <- read.csv("Data//NYPD.csv")
+Daily <- read.csv("Data//nypd_daily_total.csv")[,2:3]
+Age <- read.csv("Data//nypd_daily_total_by_age.csv")
+Borough <- read.csv("Data//nypd_daily_total_by_borough.csv")
+Race <- read.csv("Data//nypd_daily_total_by_race.csv")[,2:4]
+Sex <- read.csv("Data//nypd_daily_total_by_sex.csv")
+```
+
+```{r}
+Daily[,1] <- as.Date(Daily[,1],format="%m/%d/%Y")
+Age[,1] <- as.Date(Age[,1],format="%d-%b-%Y")
+Borough[,1] <- as.Date(Borough[,1],format="%d-%b-%Y")
+Race[,1] <- as.Date(Race[,1])
+Sex[,1] <- as.Date(Sex[,1],format="%d-%b-%Y")
+
+DateOrder = function(list,name){
+  df = data.frame(list)
+  df = df[order(df$Date), ]
+  return (df)
+}
+
+# Order By Date
+Daily = DateOrder(Daily,'Daily')
+Age = DateOrder(Age,'Daily by Age')
+Borough = DateOrder(Borough,'Daily by Borough')
+Race = DateOrder(Race,'Daily by Race')
+Sex = DateOrder(Sex)
+
+```
+
+```{r}
+plot(Daily,main='Daily',type='l')
+
+
+# Age
+par(mfrow = c(2, 3))
+for (sg in unique(Age[,2])){
+  if (sg != '1022'){
+  name = paste('Age',sg)
+  age.sub = Age[Age[,2]==sg,]
+  plot(x=age.sub$Date,y=age.sub$Total.Shootings,main=name,type='l')
+  }
+}
+
+# Borough
+par(mfrow = c(2, 3))
+for (sg in unique(Borough[,2])){
+  #print(sg)
+  name = paste('Borough',sg)
+  Borough.sub = Borough[Borough[,2]==sg,]
+  plot(x=Borough.sub$Date,y=Borough.sub$Total.Shootings,main=name,type='l')
+}
+
+# Race
+par(mfrow = c(2, 4))
+for (sg in unique(Race[,2])){
+  #print(sg)
+  name = paste('Race',sg)
+  Race.sub = Race[Race[,2]==sg,]
+  plot(x=Race.sub$Date,y=Race.sub$Total.Shootings,main=name,type='l')
+}
+
+# Sex
+par(mfrow = c(3, 1))
+for (sg in unique(Sex[,2])){
+  #print(sg)
+  name = paste('Sex',sg)
+  Sex.sub = Sex[Sex[,2]==sg,]
+  plot(x=Sex.sub$Date,y=Sex.sub$Total.Shootings,main=name,type='l')
+}
+```
+
+```{r}
+# By week
+ToWeekly <- function(df){
+  df$week <- floor_date(df$Date, "week")
+Weekly <- df %>%
+  group_by(week) %>%
+  summarize(Shootings = sum(Total.Shootings))
+  return(Weekly)
+}
+
+
+Weekly = ToWeekly(Daily)
+plot(Weekly, main='Weekly Shootings',type='l')
+
+# Age
+#par(mfrow = c(6,2))
+for (sg in unique(Age[,2])){
+  if (sg != '1022'){
+  name = paste('Age',sg)
+  age.sub = Age[Age[,2]==sg,]
+  age.sub = ToWeekly(age.sub)
+  #print(age.sub)
+  plot(x=age.sub$week,y=age.sub$Shootings,main=name,type='l')
+  acf(ts(age.sub$Shootings))
+  }
+}
+
+# Borough
+#par(mfrow = c(2, 3))
+for (sg in unique(Borough[,2])){
+  #print(sg)
+  name = paste('Borough',sg)
+  Borough.sub = Borough[Borough[,2]==sg,]
+  Borough.sub = ToWeekly(Borough.sub)
+  #print(Borough.sub)
+  plot(x=Borough.sub$week,y=Borough.sub$Shootings,main=name,type='l')
+  acf(ts(Borough.sub$Shootings))
+}
+
+# Race
+#par(mfrow = c(2, 4))
+for (sg in unique(Race[,2])){
+  #print(sg)
+  name = paste('Race',sg)
+  Race.sub = Race[Race[,2]==sg,]
+  Race.sub = ToWeekly(Race.sub)
+  #print(Race.sub)
+  if (sg!='BLACK'){
+  plot(x=Race.sub$week, y=Race.sub$Shootings,main=name,type='l',ylim=c(0,30))
+  acf(ts(Race.sub$Shootings),lag.max=52)
+  }
+  else{
+    plot(x=Race.sub$week, y=Race.sub$Shootings,main=name,type='l',ylim=c(0,120))
+    acf(ts(Race.sub$Shootings),lag.max=52)
+  }
+}
+
+# Sex
+#par(mfrow = c(3, 1))
+for (sg in unique(Sex[,2])){
+  #print(sg)
+  name = paste('Sex',sg)
+  Sex.sub = Sex[Sex[,2]==sg,]
+  Sex.sub = ToWeekly(Sex.sub)
+  #print(Sex.sub)
+  plot(x=Sex.sub$week,y=Sex.sub$Shootings,main=name,type='l')
+  acf(ts(Sex.sub$Shootings),lag.max=52)
+}
+
+
+```
+
+# Other Time Series
+
+```{r}
+ToMonthly <- function(df){
+  df$month <- floor_date(df$Date, "month")
+Monthly <- df %>%
+  group_by(month) %>%
+  summarize(Shootings = sum(Total.Shootings))
+  return(Monthly)
+}
+
+Monthly = ToMonthly(Daily)
+plot(Monthly,type='l',main='Monthly Shootings')
+
+
+Variate_ts_Detail <- function(f,y_data,plot_it=TRUE,print_all=TRUE){
+  data = read.csv(paste0('Data//',f,'.csv'))
+  data[,1] = as.Date(data[,1],format="%Y-%m-%d")
+  a <- as.Date("2006-01-01")
+  b <- as.Date("2022-12-31")
+  data <- subset(data, data[,1] >= a & data[,1] <= b)
+  write.csv(data,paste(f,'.csv'))
+  #print(data)
+  if (plot_it){
+  plot(x=data[,1],y=data[,2],type='l',main=f)
+  }
+  tryCatch({
+  result = grangertest(y=y_data,x=data[,2],order=3)
+  
+  p = result['Pr(>F)']
+  if (!print_all){
+  if (p[2,1]<0.05){
+  print(paste(f,result['Pr(>F)']))
+  }
+  }
+  else{
+     print(paste(f,result['Pr(>F)']))
+  }
+  
+  },
+  error = function(cond){
+    print(paste('Warining:',f,'->',cond))
+    print(data)
+  }
+  )
+  return(data)
+}
+
+
+condo = Variate_ts_Detail('Condo_price',Monthly[,2])
+house = Variate_ts_Detail('House_price',Monthly[,2])
+income_inequality = Variate_ts_Detail('income_inequality',Monthly[,2])
+labor = Variate_ts_Detail('labor_partition_rate',Monthly[,2])
+mdi = Variate_ts_Detail('Median_income_Census',Monthly[,2])
+population = Variate_ts_Detail('Resident_population',Monthly[,2])
+min_wagr = Variate_ts_Detail('state_min_wage',Monthly[,2])
+unr = Variate_ts_Detail('Unemployment_rate',Monthly[,2])
+education = Variate_ts_Detail('high_education',Monthly[,2])
+own_home = Variate_ts_Detail('home_ownership',Monthly[,2])
+hour_wage = Variate_ts_Detail('hourly_wage',Monthly[,2])
+#Variate_ts_Detail('Stock_earning_yield',Monthly[,2])
+gdp = Variate_ts_Detail('GDP_tristate',Monthly[,2])
+weather = Variate_ts_Detail('weather',Monthly[,2])
+
+```
+
+# Multivariate Analysis
+```{r}
+library(tseries)
+library(vars)
+library(forecast)
+library(aod)
+library(lubridate)
+library(Metrics)
+```
+
+## VAR
+```{r}
+print(length(labor[,1]) == length(unr[,1]))
+print(length(labor[,1]) == length(weather[,1]))
+print(length(labor[,1]) == length(Monthly[,1]))
+
+
+# VAR & VARX
+n.fore = 24
+n = length(labor[,1])-n.fore
+if (length(Monthly)/5<n){
+  Monthly = cbind(Monthly,labor[,2],unr[,2],weather[,2])
+  Monthly[,3] = as.numeric(Monthly[,3])
+  Monthly[,4] = as.numeric(Monthly[,4])
+  Monthly[,5] = as.numeric(Monthly[,5])
+}
+
+print(n)
+harmonic <- cbind(sin(wday(Monthly$month[2:n])*2*pi/7),cos(wday(Monthly$month[2:n])*2*pi/7))
+colnames(harmonic) <- c("Sin","Cos")
+
+VARselect(Monthly[2:n,c(2:5)], lag.max = 12, season=12, type = "both")$selection
+var <- VAR(Monthly[2:n,c(2:5)], p=5, type = "both")
+summary(var)
+
+#fore.harmonic <- cbind(sin(wday(Monthly$month[(n+1):(n+n.fore)])*2*pi/7),cos(wday(Monthly$month[(n+1):(n+n.fore)])*2*pi/7))
+#colnames(harmonic) <- c("Sin","Cos")
+fore.var <- predict(var, n.ahead = n.fore, ci = 0.95)
+predict.var <- fore.var$fcst$Shootings
+
+plot(Monthly$month,Monthly$Shootings,type = "l", xlab = "Time", ylab = "Daily Number of Police Reports", col = "black", ylim = c(0,320))
+lines(Monthly$month[(n+1):(n+n.fore)], fore.var$fcst$Shootings[,2], col = "green")
+lines(Monthly$month[(n+1):(n+n.fore)], fore.var$fcst$Shootings[,3], col = "green")
+lines(Monthly$month[(n+1):(n+n.fore)], fore.var$fcst$Shootings[,1], col = "blue",type='l')
+
+mse(fore.var$fcst$Shootings[,1],Monthly$Shootings[(n+1):(n+n.fore)])
+```
+
+```{r}
+vars::arch.test(var)
+normality.test(var)
+serial.test(var)
+```
+
+
+
+## ARMAX
+```{r}
+# ARMA
+n.fore = 24
+n = length(labor[,1])-n.fore
+training.data = Monthly[2:n,2]
+
+
+armax.AIC <- array(rep(0,9*25), dim = c(5,5,3,3))
+for (p in 0:4){
+  for (q in 0:4){
+    for (r in 0:2){
+      for (s in 0:2){
+        #print(paste(p,q,r,s))
+        if (sum(p,q,r,s)!=0){
+        tryCatch({
+    model.temp <- arima(training.data, order = c(p,0,q), seasonal = list(order= c(r,0,s), period = 12),
+                method = "ML", xreg = Monthly[1:(n-1),3:5])
+    armax.AIC[p+1,q+1,r+1,s+1] <- AIC(model.temp)},
+  error = function(cond){
+    armax.AIC[p+1,q+1,r+1,s+1] <- Inf
+  }
+ 
+        )}
+        
+         else{
+     armax.AIC[p+1,q+1,r+1,s+1] <- Inf
+
+      }
+    }
+  }
+  }
+}
+
+```
+
+```{r}
+k <- which.min(armax.AIC)
+s <- ceiling(k/75) - 1
+r <- ceiling((k - s*75)/25)-1
+q <- ceiling((k-s*75-r*25)/5) - 1
+p <- k - s*75 - r*25 - q*5 - 1
+sprintf("p = %d, q = %d, r = %d, s = %d", p, q, r, s)
+```
+
+```{r}
+
+model.armax <- Arima(training.data, order = c(p,0,q), seasonal = list(order= c(r,0,s), period = 12),
+                method = "ML", xreg = matrix(unlist(Monthly[1:(n-1),3:5]), ncol = 3, byrow = TRUE))
+model.armax
+
+zval <- model.armax$coef[1:13]/sqrt(diag(model.armax$var.coef)[1:13])
+pval <- 2*pnorm(-abs(zval))
+pval
+```
+
+```{r}
+plot(as.POSIXct(Monthly$month[1:(n-1)]), model.armax$residuals, type = "l", xlab = "Time", ylab = "Residuals of ARMAX", main='ARMA Residuals')
+
+par(mfrow=c(1,2))
+acf(model.armax$residuals, main = "Residuals")
+acf(model.armax$residuals^2, main = "Squared Residuals")
+
+shapiro.test(model.armax$residuals)
+Box.test(model.armax$residuals, lag = (p + q + 1), type = "Ljung-Box", fitdf = (p + q))
+```
+
+```{r}
+
+fore.armax <- forecast(model.armax ,xreg = matrix(unlist(Monthly[(n+1):(n+n.fore),3:5]), ncol = 3, byrow = TRUE))
+plot(as.POSIXct(Monthly$month), Monthly[,2],type = "l", xlab = "Time", ylab = "Monthly Shootings",main='ARMAX model Validation')
+lines(as.POSIXct(Monthly[(n+1):(n+n.fore),1]), fore.armax$upper[,2], col = "green")
+lines(as.POSIXct(Monthly[(n+1):(n+n.fore),1]), fore.armax$lower[,2], col = "green")
+points(as.POSIXct(Monthly[(n+1):(n+n.fore),1]), fore.armax$mean, col = "blue",type='l')
+
+mse(fore.armax$mean,Monthly[(n+1):(n+n.fore),2])
+```

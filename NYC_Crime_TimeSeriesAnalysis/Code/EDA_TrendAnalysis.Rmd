@@ -1,0 +1,405 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# EDA and Trend Analysis
+
+```{r}
+start_date = as.Date("2006-01-01")
+end_date = as.Date("2022-12-31")
+library(dplyr)
+library(tidyr)
+library(mgcv)
+set.seed(pi)
+```
+
+## Age
+
+```{r}
+age <- read.csv('nypd_daily_total_by_age.csv',sep=';')
+age$Date <- as.Date(age$Date,format="%d-%b-%y")
+age <- split(age, age$Victim.Age.Group)
+age <- age[-c(2,7)]
+for (i in 1:length(age)){
+  age[[i]] = data.frame(age[[i]] %>%
+  complete(Date = seq.Date(start_date, end_date, by = "days"), Victim.Age.Group, fill = list(Total.Shootings = 0)) %>%
+  arrange(Date))
+}
+age
+```
+
+```{r}
+for (i in 1:length(age)){
+  # print(age[[i]][,1])
+  plot(age[[i]][,1], sqrt(age[[i]][,3]),type='l', xlab='Year', ylab='Total Shootings', main=names(age)[i])
+}
+
+```
+
+```{r}
+for (i in 1:length(age)){
+  plot(age[[i]][-1,1], diff(age[[i]][,3]),type='l')
+  acf(diff(age[[i]][,3]), lag.max=365)
+}
+```
+
+```{r}
+for (i in 1:length(age)){
+  points <- 1:length(diff(age[[i]][,3]))
+  points <- (points - min(points)) / max(points)
+
+  # Moving Average Model
+  mav.model <- ksmooth(points, diff(age[[i]][,3]), kernel = "box")
+  mav.fit <- mav.model$y
+  # Quadratic Model
+  x1 <- points
+  x2 <- points^2
+  para.model <- lm(diff(age[[i]][,3]) ~ x1 + x2)
+  para.fit <- fitted(para.model)
+  # Polynomial Model
+  loc.model <- loess(diff(age[[i]][,3]) ~ points)
+  loc.fit <- fitted(loc.model)
+  # Splines model
+  month = as.factor(format(age[[i]][-1,1],"%b"))
+  weekday = as.factor(weekdays(age[[i]][-1,1]))
+  gam.model <- gam(diff(age[[i]][,3]) ~ s(points) + month + weekday)
+  gam.fit <- fitted(gam.model)
+
+
+  plot(age[[i]][-1,1], diff(age[[i]][,3]),type='l')
+  lines(age[[i]][-1,1], mav.fit,col='blue',lwd=2)
+  lines(age[[i]][-1,1], fitted(para.model), col='yellow', lwd=2)
+  lines(age[[i]][-1,1], loc.fit, col='green', lwd=2)
+  lines(age[[i]][-1,1], gam.fit, col='red', lwd=2)
+}
+```
+
+```{r}
+age_monthly = list()
+library(lubridate)
+for (i in 1:length(age)){
+  age[[i]]$Month = floor_date(age[[i]][,1], "month")
+  agg <- aggregate(x = as.numeric(age[[i]]$Total.Shootings), by = list(age[[i]]$Month), FUN = sum)
+  colnames(agg) <- c("Month", "Total Shootings")
+  age_monthly[[i]] = agg
+}
+names(age_monthly) <- names(age)
+```
+
+```{r}
+for (i in 1:length(age_monthly)){
+  print(age_monthly[[i]]$'Total Shootings')
+  print(age_monthly[[i]]$Month)
+  plot(age_monthly[[i]][,1], age_monthly[[i]][,2], type='l', xlab='Year', ylab='Total Shootings', main=names(age_monthly)[i])
+}
+```
+
+```{r}
+for (i in 1:length(age_monthly)){
+  acf(age_monthly[[i]][,2], lag.max=36)
+}
+```
+
+```{r}
+for (i in 1:length(age_monthly)){
+  points <- 1:length(age_monthly[[i]][,2])
+  points <- (points - min(points)) / max(points)
+
+  # Moving Average Model
+  mav.model <- ksmooth(points, age_monthly[[i]][,2], kernel = "box")
+  mav.fit <- mav.model$y
+  # Quadratic Model
+  x1 <- points
+  x2 <- points^2
+  para.model <- lm(age_monthly[[i]][,2] ~ x1 + x2)
+  para.fit <- fitted(para.model)
+  # Polynomial Model
+  loc.model <- loess(age_monthly[[i]][,2] ~ points)
+  loc.fit <- fitted(loc.model)
+  # Splines model
+  month = as.factor(format(age_monthly[[i]][,1],"%b"))
+  gam.model <- gam(age_monthly[[i]][,2] ~ s(points) + month)
+  gam.fit <- fitted(gam.model)
+
+
+  plot(age_monthly[[i]][,1], age_monthly[[i]][,2],type='l')
+  lines(age_monthly[[i]][,1], mav.fit,col='blue',lwd=2)
+  lines(age_monthly[[i]][,1], fitted(para.model), col='yellow', lwd=2)
+  lines(age_monthly[[i]][,1], loc.fit, col='green', lwd=2)
+  lines(age_monthly[[i]][,1], gam.fit, col='red', lwd=2)
+}
+```
+
+```{r}
+summary(gam.model)
+```
+
+```{r}
+acf(residuals(gam.model))
+```
+
+```{r}
+summary(para.model)
+```
+
+```{r}
+acf(residuals(para.model))
+```
+
+## Race
+
+```{r}
+race <- read.csv('nypd_daily_total_by_race.csv',sep=',')
+race$Date <- as.Date(race$Date,format="%m/%d/%Y")
+race <- race[,-1]
+race <- split(race, race$Victim.Race)
+race <- race[-5]
+race <- race[-1]
+race
+```
+
+```{r}
+new_race = list()
+dummy = 1
+for (i in race){
+  # print(i)
+  print(i %>% arrange(ymd(i$Date)))
+  new_race[[dummy]] = i %>% arrange(ymd(i$Date))
+  dummy = dummy + 1
+  # plot(race[[i]][,1], race[[i]][,3],type='l')
+}
+names(new_race) <- names(race)
+race = new_race
+names(race) <- names(new_race)
+```
+
+```{r}
+for (i in 1:length(race)){
+  plot(race[[i]][-1,1], diff(race[[i]][,3]),type='l')
+  acf(diff(race[[i]][,3]), lag.max=365)
+}
+```
+
+```{r}
+race_monthly = list()
+library(lubridate)
+for (i in 1:length(race)){
+  race[[i]]$Month = floor_date(race[[i]][,1], "month")
+  agg <- aggregate(x = as.numeric(race[[i]]$Total.Shootings), by = list(race[[i]]$Month), FUN = sum)
+  colnames(agg) <- c("Month", "Total Shootings")
+  race_monthly[[i]] = agg
+}
+names(race_monthly) <- names(race)
+```
+
+```{r}
+for (i in 1:length(race_monthly)){
+  print(race_monthly[[i]]$'Total Shootings')
+  print(race_monthly[[i]]$Month)
+  plot(race_monthly[[i]][,1], race_monthly[[i]][,2], type='l')
+}
+```
+
+```{r}
+for (i in 1:length(race_monthly)){
+  acf(race_monthly[[i]][,2], lag.max=36)
+}
+```
+
+```{r}
+
+for (i in 1:length(race_monthly)){
+  points <- 1:length(race_monthly[[i]][,2])
+  points <- (points - min(points)) / max(points)
+
+  # Moving Average Model
+  race_mav.model <- ksmooth(points, race_monthly[[i]][,2], kernel = "box")
+  race_mav.fit <- race_mav.model$y
+  # Quadratic Model
+  x1 <- points
+  x2 <- points^2
+  race_para.model <- lm(race_monthly[[i]][,2] ~ x1 + x2)
+  race_para.fit <- fitted(race_para.model)
+  # Polynomial Model
+  race_loc.model <- loess(race_monthly[[i]][,2] ~ points)
+  race_loc.fit <- fitted(race_loc.model)
+  # Splines model
+  month = as.factor(format(race_monthly[[i]][,1],"%b"))
+  levels(month) <- c(levels(month), 'Jan', 'Feb', 'Apr','Jul', '')
+  print(month)
+  race_gam.model <- gam(race_monthly[[i]][,2] ~ s(points) + month)
+  race_gam.fit <- fitted(race_gam.model)
+
+  print(summary(race_gam.model))
+  print(summary(race_para.model))
+
+  plot(race_monthly[[i]][,1], race_monthly[[i]][,2],type='l', main=names(race_monthly)[i], xlab='Year', ylab='Total Shootings')
+  lines(race_monthly[[i]][,1], race_mav.fit,col='blue',lwd=2)
+  lines(race_monthly[[i]][,1], fitted(race_para.model), col='yellow', lwd=2)
+  lines(race_monthly[[i]][,1], race_loc.fit, col='green', lwd=2)
+  lines(race_monthly[[i]][,1], race_gam.fit, col='red', lwd=2)
+}
+```
+
+## Sex
+
+```{r}
+sex <- read.csv('nypd_daily_total_by_sex.csv',sep=';')
+sex$Date <- as.Date(sex$Date,format="%d-%b-%y")
+sex <- split(sex, sex$Victim.Sex)
+sex <- sex[-3]
+sex
+```
+
+```{r}
+for (i in 1:length(sex)){
+  plot(sex[[i]][,1], sex[[i]][,3],type='l')
+}
+```
+
+```{r}
+for (i in 1:length(sex)){
+  plot(sex[[i]][-1,1], diff(sex[[i]][,3]),type='l')
+  acf(diff(sex[[i]][,3]), lag.max=365)
+}
+```
+
+```{r}
+sex_monthly = list()
+library(lubridate)
+for (i in 1:length(sex)){
+  sex[[i]]$Month = floor_date(sex[[i]][,1], "month")
+  agg <- aggregate(x = as.numeric(sex[[i]]$Total.Shootings), by = list(sex[[i]]$Month), FUN = sum)
+  colnames(agg) <- c("Month", "Total Shootings")
+  sex_monthly[[i]] = agg
+}
+names(sex_monthly) <- names(sex)
+```
+
+```{r}
+for (i in 1:length(sex_monthly)){
+  print(sex_monthly[[i]]$'Total Shootings')
+  print(sex_monthly[[i]]$Month)
+  plot(sex_monthly[[i]][,1], sex_monthly[[i]][,2], type='l')
+}
+```
+
+```{r}
+for (i in 1:length(sex_monthly)){
+  acf(sex_monthly[[i]][,2], lag.max=36)
+}
+```
+
+```{r}
+
+for (i in 1:length(sex_monthly)){
+  points <- 1:length(sex_monthly[[i]][,2])
+  points <- (points - min(points)) / max(points)
+
+  # Moving Average Model
+  sex_mav.model <- ksmooth(points, sex_monthly[[i]][,2], kernel = "box")
+  sex_mav.fit <- sex_mav.model$y
+  # Quadratic Model
+  x1 <- points
+  x2 <- points^2
+  sex_para.model <- lm(sex_monthly[[i]][,2] ~ x1 + x2)
+  sex_para.fit <- fitted(sex_para.model)
+  # Polynomial Model
+  sex_loc.model <- loess(sex_monthly[[i]][,2] ~ points)
+  sex_loc.fit <- fitted(sex_loc.model)
+  # Splines model
+  month = as.factor(format(sex_monthly[[i]][,1],"%b"))
+  sex_gam.model <- gam(sex_monthly[[i]][,2] ~ s(points) + month)
+  sex_gam.fit <- fitted(sex_gam.model)
+
+
+  plot(sex_monthly[[i]][,1], sex_monthly[[i]][,2],type='l', main=names(sex_monthly)[i])
+  lines(sex_monthly[[i]][,1], sex_mav.fit,col='blue',lwd=2)
+  lines(sex_monthly[[i]][,1], fitted(sex_para.model), col='yellow', lwd=2)
+  lines(sex_monthly[[i]][,1], sex_loc.fit, col='green', lwd=2)
+  lines(sex_monthly[[i]][,1], sex_gam.fit, col='red', lwd=2)
+}
+```
+
+## Borough
+
+```{r}
+borough <- read.csv('nypd_daily_total_by_borough.csv',sep=';')
+borough$Date <- as.Date(borough$Date,format="%d %b %y")
+borough <- split(borough, borough$Borough)
+borough
+```
+
+```{r}
+for (i in 1:length(borough)){
+  plot(borough[[i]][,1], borough[[i]][,3],type='l')
+}
+```
+
+```{r}
+for (i in 1:length(borough)){
+  plot(borough[[i]][-1,1], diff(borough[[i]][,3]),type='l')
+  acf(diff(borough[[i]][,3]), lag.max=365)
+}
+```
+
+```{r}
+borough_monthly = list()
+library(lubridate)
+for (i in 1:length(borough)){
+  borough[[i]]$Month = floor_date(borough[[i]][,1], "month")
+  agg <- aggregate(x = as.numeric(borough[[i]]$Total.Shootings), by = list(borough[[i]]$Month), FUN = sum)
+  colnames(agg) <- c("Month", "Total Shootings")
+  borough_monthly[[i]] = agg
+}
+names(borough_monthly) <- names(borough)
+```
+
+```{r}
+for (i in 1:length(borough_monthly)){
+  print(borough_monthly[[i]]$'Total Shootings')
+  print(borough_monthly[[i]]$Month)
+  plot(borough_monthly[[i]][,1], borough_monthly[[i]][,2], type='l')
+}
+```
+
+```{r}
+for (i in 1:length(borough_monthly)){
+  acf(borough_monthly[[i]][,2], lag.max=36)
+}
+```
+
+```{r}
+for (i in 1:length(borough_monthly)){
+  points <- 1:length(borough_monthly[[i]][,2])
+  points <- (points - min(points)) / max(points)
+
+  # Moving Average Model
+  borough_mav.model <- ksmooth(points, borough_monthly[[i]][,2], kernel = "box")
+  borough_mav.fit <- borough_mav.model$y
+  # Quadratic Model
+  x1 <- points
+  x2 <- points^2
+  borough_para.model <- lm(borough_monthly[[i]][,2] ~ x1 + x2)
+  borough_para.fit <- fitted(borough_para.model)
+  # Polynomial Model
+  borough_loc.model <- loess(borough_monthly[[i]][,2] ~ points)
+  borough_loc.fit <- fitted(borough_loc.model)
+  # Splines model
+  month = as.factor(format(borough_monthly[[i]][,1],"%b"))
+  borough_gam.model <- gam(borough_monthly[[i]][,2] ~ s(points) + month)
+  borough_gam.fit <- fitted(borough_gam.model)
+
+
+  plot(borough_monthly[[i]][,1], borough_monthly[[i]][,2],type='l', main=names(borough_monthly)[i])
+  lines(borough_monthly[[i]][,1], borough_mav.fit,col='blue',lwd=2)
+  lines(borough_monthly[[i]][,1], fitted(borough_para.model), col='yellow', lwd=2)
+  lines(borough_monthly[[i]][,1], borough_loc.fit, col='green', lwd=2)
+  lines(borough_monthly[[i]][,1], borough_gam.fit, col='red', lwd=2)
+}
+```
+
+```{r}
+print(names(borough_monthly))
+```
