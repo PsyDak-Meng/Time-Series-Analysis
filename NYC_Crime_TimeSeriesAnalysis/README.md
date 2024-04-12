@@ -8,7 +8,7 @@ Time Series Analysis of New York City crime data, both univariate and multivaria
 <img src="https://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/NYC_Crime_TimeSeriesAnalysis/Code/ARMA-GARCH.png">
 
 ### VAR Model
-<img src="ttps://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/NYC_Crime_TimeSeriesAnalysis/Code/VAR.png">
+<img src="https://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/NYC_Crime_TimeSeriesAnalysis/Code/VAR.png">
 
 ### ARMAX Model
-<img src="ttps://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/NYC_Crime_TimeSeriesAnalysis/Code/ARMAX.png">
+<img src="https://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/NYC_Crime_TimeSeriesAnalysis/Code/ARMAX.png">
