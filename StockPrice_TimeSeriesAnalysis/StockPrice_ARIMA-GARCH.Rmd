@@ -1,5 +1,5 @@
 ---
-title: "ISYE 6402 Homework 3"
+title: "ISYE 6402: CocaCola Stock Price ARIMA=GARCH Prediction"
 output:
   html_document: default
   pdf_document: default
