@@ -15,7 +15,7 @@ This repository does not require any installation. However, you may need to inst
 
 Explore my walkthrough tutorial to learn about time series analysis techniques and methodologies with stock price data:
 
-- [CocaCola Stock Price Time Series Analysis Walkthrough](tutorials/getting_started.md)
+- [CocaCola Stock Price Time Series Analysis Walkthrough](https://medium.com/@dakotameng/cracking-the-stock-market-how-time-series-analysis-reveals-the-rhythm-of-stock-prices-985dd8853cce)
 
 
 ## Code Examples 👽
