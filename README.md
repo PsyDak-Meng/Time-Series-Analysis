@@ -1,14 +1,36 @@
-# NYC-Crime-Time-Series-Analysis
-Time Series Analysis of New York City crime data, both univariate and multivariate models.
+#  ![R Icon](https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/R_logo.svg/64px-R_logo.svg.png)   Time Series Analysis 
 
-### Trend Analysis
-<img src="https://github.com/PsyDak-Meng/NYC-Crime-Time-Series-Analysis/blob/main/Code/Trend.png">
+## Overview 📈
+Welcome to the Time Series Analysis repository! This repository contains datasets and code example resources for analyzing time series data in real-world scenarios using 
+- Parametric models.
+- Non-Parametric model.
+- Inivariate and multivariate ARMA-based models.
 
-### ARMA-GARCH Model
-<img src="https://github.com/PsyDak-Meng/NYC-Crime-Time-Series-Analysis/blob/main/Code/ARMA-GARCH.png">
 
-### VAR Model
-<img src="https://github.com/PsyDak-Meng/NYC-Crime-Time-Series-Analysis/blob/main/Code/VAR.png">
+## Installation
 
-### ARMAX Model
-<img src="https://github.com/PsyDak-Meng/NYC-Crime-Time-Series-Analysis/blob/main/Code/ARMAX.png">
+This repository does not require any installation. However, you may need to install specific libraries or packages if you intend to run the provided code examples or tutorials in your local environment.
+
+## Tutorials
+
+Explore my walkthrough tutorial to learn about time series analysis techniques and methodologies with stock price data:
+
+- [CocaCola Stock Price Time Series Analysis Walkthrough](tutorials/getting_started.md)
+
+
+## Code Examples
+
+Browse through my code example fils to see how to implement time series analysis techniques in R.
+
+## Datasets
+
+Download sample datasets to practice time series analysis techniques:
+
+- [NYC Crime Time Series Dataset](https://github.com/PsyDak-Meng/Time-Series-Analysis/tree/main/NYC_Crime_TimeSeriesAnalysis/Data)
+- [CocaCola Stock Price Time Series Dataset](https://github.com/PsyDak-Meng/Time-Series-Analysis/blob/main/StockPrice_TimeSeriesAnalysis/CocaColaStock.csv)
+
+## License
+
+This repository is licensed under the [MIT License](LICENSE).
+
+
